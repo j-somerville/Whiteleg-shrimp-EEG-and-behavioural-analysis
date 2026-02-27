@@ -1,0 +1,37 @@
+animal_id,day_month_year,location,stun_parameter,time_start,recovery_stage,time_to_stage,time_seconds_stage,stun_time,video_time_to_stage,weight,sex,cl,comments
+100,10_12_25,buckieburn,2.5_5,,stage_2,9.51s,3,12:02:25,3,17.05,m,27.9,taking stage2time from when pleopods first start moving and body uncurls
+100,10_12_25,buckieburn,2.5_5,,stage_3,41.87s,42,,,17.05,m,27.9,
+100,10_12_25,buckieburn,2.5_5,,stage_4,20 mins 17.41s,1217,,,17.05,m,27.9,
+101,10_12_25,buckieburn,2.5_5,,stage_2,8.915s,1,12:49:00,1,19.29,m,29.1,
+101,10_12_25,buckieburn,2.5_5,,stage_3,4mins 4.39 s,244,,,19.29,m,29.1,
+101,10_12_25,buckieburn,2.5_5,,stage_4,24 mins 50.39s,1490,,,19.29,m,29.1,
+103,10_12_25,buckieburn,2.5_5,,stage_2,13.46s,3,13:27:19,3,13.26,m,25.3,
+103,10_12_25,buckieburn,2.5_5,,stage_3,3 mins 38.52s,219,,,13.26,m,25.3,
+103,10_12_25,buckieburn,2.5_5,,stage_4,31 mins 30s,1890,,,13.26,m,25.3,
+104,10_12_25,buckieburn,2.5_5,,stage_2,21.02s,1,13:27:19,1,15.76,f,28.4,
+104,10_12_25,buckieburn,2.5_5,,stage_3,87.27s,87,,,15.76,f,28.4,
+104,10_12_25,buckieburn,2.5_5,,stage_4,31mins 50s,1910,,,15.76,f,28.4,
+105,10_12_25,buckieburn,2.5_5,,stage_2,13.25,2,14:11:31,2,15.05,m,26.05,
+105,10_12_25,buckieburn,2.5_5,,stage_3,4mins 53.83s,234,,,15.05,m,26.05,
+105,10_12_25,buckieburn,2.5_5,,stage_4,25mins 4.58s,1505,,,15.05,m,26.05,
+106,11_12_25,buckieburn,3_20,,stage_2,10.16s,4,10:51:01,4,18.43,f,28.2,curled before stunned. no recovery
+106,11_12_25,buckieburn,3_20,,stage_3,,,10:51:01,,18.43,f,28.2,curled before stunned. no recovery
+106,11_12_25,buckieburn,3_20,,stage_4,,,10:51:01,,18.43,f,28.2,curled before stunned. no recovery
+107,11_12_25,buckieburn,3_20,,stage_2,22.72s,4,10:51:01,4,15.46,f,27.4,no recovery
+107,11_12_25,buckieburn,3_20,,stage_3,,,10:51:01,,15.46,f,27.4,no recovery
+107,11_12_25,buckieburn,3_20,,stage_4,,,10:51:01,,15.46,f,27.4,no recovery
+108,11_12_25,buckieburn,3_20,,stage_2,8.75s,4,11:34:59,4,22.47,m,29.6,died after 1hr 47 post stun. tail flipped on being touched after 33mins when moved to recovery. eventually died and could not right
+108,11_12_25,buckieburn,3_20,,stage_3,29mins,1740,11:34:59,,22.47,m,29.6,died after 1hr 47 post stun. tail flipped on being touched after 33mins when moved to recovery. eventually died and could not right
+108,11_12_25,buckieburn,3_20,,stage_4,,,11:34:59,,22.47,m,29.6,died after 1hr 47 post stun. tail flipped on being touched after 33mins when moved to recovery. eventually died and could not right
+109,11_12_25,buckieburn,3_20,,stage_2,16.31s,3,11:34:59,3,17.73,m,27.7,died after 51 mins post stun
+109,11_12_25,buckieburn,3_20,,stage_3,,,11:34:59,,17.73,m,27.7,died after 51 mins post stun
+109,11_12_25,buckieburn,3_20,,stage_4,,,11:34:59,,17.73,m,27.7,died after 51 mins post stun
+110,11_12_25,buckieburn,3_20,,stage_2,8.49s,2,12:28:20,2,19.36,m,28.1,died after 1hr 48 post stun. got to coordinated movement and then died
+110,11_12_25,buckieburn,3_20,,stage_3,20 mins 26.76s,1227,12:28:20,,19.36,m,28.1,died after 1hr 48 post stun. got to coordinated movement and then died
+110,11_12_25,buckieburn,3_20,,stage_4,,,12:28:20,,19.36,m,28.1,died after 1hr 48 post stun. got to coordinated movement and then died
+111,11_12_25,buckieburn,3_20,,stage_2,13.76s,2,12:28:20,2,16.68,f,28.2,seemed dead after 30 mins
+111,11_12_25,buckieburn,3_20,,stage_3,,,12:28:20,,16.68,f,28.2,seemed dead after 30 mins
+111,11_12_25,buckieburn,3_20,,stage_4,,,12:28:20,,16.68,f,28.2,seemed dead after 30 mins
+112,11_12_25,buckieburn,2.5_5,,stage_2,05.84s,1,13:46:02,1,13.64,f,25.6,righted early
+112,11_12_25,buckieburn,2.5_5,,stage_3,4 mins 12.41s,252,13:46:02,,13.64,f,25.6,righted early
+112,11_12_25,buckieburn,2.5_5,,stage_4,10 min 1.97s,602,13:46:02,,13.64,f,25.6,righted early
