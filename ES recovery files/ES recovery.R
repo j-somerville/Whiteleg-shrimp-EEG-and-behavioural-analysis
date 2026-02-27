@@ -121,9 +121,9 @@ clean_combined_data2 <- clean_combined_data2 %>%
   ) %>%
   group_by(Source_File) %>%
   mutate(
-    Med = median(All.0.5.32.Hz[relative_time >= (stun_time + 120)], na.rm = TRUE),
-    MAD = mad(All.0.5.32.Hz[relative_time >= (stun_time + 120)], na.rm = TRUE),
-    Keep = if_else(relative_time >= (stun_time + 120),
+    Med = median(All.0.5.32.Hz[relative_time >= (stun_time + 60)], na.rm = TRUE),
+    MAD = mad(All.0.5.32.Hz[relative_time >= (stun_time + 60)], na.rm = TRUE),
+    Keep = if_else(relative_time >= (stun_time + 60),
                    abs(All.0.5.32.Hz - Med) <= 1 * MAD,
                    TRUE)
   ) %>%
@@ -416,5 +416,6 @@ results_tbl<- broom.mixed::tidy(m3)
 
 #write.csv
 #ggsave(filename = "recovery_es.png", plot = recover, width = 14, height = 10, dpi = 300)
+
 
 
