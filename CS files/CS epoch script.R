@@ -20,7 +20,7 @@ library(tidyr)
 
 
 # Define the folder path
-folder_path <- "C:/...."
+folder_path <- ""
 
 # Get all CSVs except those with 'double' in their filename
 csv_files <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
@@ -138,7 +138,6 @@ CLEAN2<-ggplot(df_long_filtered, aes(x = relative_time, y = power, color = band)
   theme_minimal()
 CLEAN2
 
-
 eeg_df<-clean_combined_data2
 
 # STEP 1: Identify time of 'in slurry' per file
@@ -159,7 +158,13 @@ baseline_df3 <- eeg_annotated %>%
   mutate(stun_time = first(relative_time[Comments == "in slurry"])) %>%
   filter(relative_time >= 0 & relative_time < (stun_time - 100)) %>%
   arrange(Source_File, relative_time) %>%
+  mutate(n = n()) %>%      # count per group
   ungroup()
+
+###find unique n number per group
+
+baseline_df3_unique_n <- baseline_df3 %>%
+  distinct(Source_File, n)
 
 baseline_medians <- baseline_df3 %>%
   group_by(Source_File) %>%
@@ -250,20 +255,37 @@ subsampled_summary<- subsampled_summary |>
 
 subsampled<-subset(subsampled_summary, select = -c(n_points) )
 #write.csv
-
-
-
-
-#combine with baseline
 new_subsample<-rbind(subsampled,baseline_summary)
 
-boxplot_data <- new_subsample %>%
-  select(Source_File, bin, ten_percent, hundred_percent, starts_with("pct_")) %>%
+
+# 1. Extract baseline percent values per animal
+baseline_ref <- baseline_summary %>%
+  select(Source_File, starts_with("pct_")) %>%
+  rename_with(~ paste0("ref_", .x), starts_with("pct_"))
+
+# 2. Join baseline reference to subsampled data
+subsampled_renorm <- new_subsample %>%
+  left_join(baseline_ref, by = "Source_File") %>%
+  mutate(
+    across(
+      starts_with("pct_"),
+      ~ (.x / get(paste0("ref_", cur_column()))) * 100,
+      .names = "new_{.col}"
+    )
+  )
+
+#write.csv(subsampled_renorm, "subsampled_renorm_CS_all_epochs.csv")
+
+#combine with baseline
+
+boxplot_data <- subsampled_renorm  %>%
+  select(Source_File, bin, ten_percent, hundred_percent, starts_with("new_")) %>%
   pivot_longer(
-    cols = starts_with("pct_"),
+    cols = starts_with("new_"),
     names_to = "band",
     values_to = "pct_value"
   )
+
 
 boxplot_data<- boxplot_data %>%
   mutate(band = recode(band,
@@ -345,8 +367,13 @@ minus <- tempm2.5 %>%
     "-1" = "<0"))+
   geom_point(aes(x = 4, y =0.6), 
              shape = 8, 
-             size = 1, 
-             color = "black")
+             size = 4, 
+             color = "black")+
+  theme(
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background  = element_rect(fill = "white", colour = NA)
+  )
+
   
 minus
 
@@ -358,67 +385,18 @@ tempm2.5<-tempm2.5%>%
 tempm2.5$bin<-as.factor(tempm2.5$bin)
 tempm2.5$Source_File<-as.factor(tempm2.5$Source_File)
 
+hist(tempm2.5$sqrt_pct)
+
+library(lmerTest)
 m2 <- lmer(sqrt_pct ~ bin + (1|Source_File), data = tempm2.5)
 summary(m2)
 
+##log
+
 library(broom.mixed)
-results_tbl_minus2.5 <- broom.mixed::tidy(m2)
+results_tbl_minus2.5_log <- broom.mixed::tidy(m2)
 
-#write.csv
-
-
-#Linear mixed model fit by REML. t-tests use Satterthwaite's method [
-#lmerModLmerTest]
-#Formula: sqrt_pct ~ bin + (1 | Source_File)
-#   Data: tempm2.5
-
-#REML criterion at convergence: 112.1
-
-#Scaled residuals: 
-#     Min       1Q   Median       3Q      Max 
-#-2.61860 -0.51052 -0.04208  0.56750  2.53826 
-#
-#Random effects:
-# Groups      Name        Variance Std.Dev.
-# Source_File (Intercept) 0.3102   0.5570  
-# Residual                0.1238   0.3519  
-#Number of obs: 109, groups:  Source_File, 5
-
-#Fixed effects:
-#            Estimate Std. Error      df t value Pr(>|t|)    
-#(Intercept)  10.2368     0.2946  7.4873   34.74  1.5e-09 ***
-#bin2         -8.0708     0.2226 75.0720  -36.26  < 2e-16 ***
-#bin3         -8.1562     0.2226 75.0720  -36.65  < 2e-16 ***
-#bin4         -8.3571     0.2226 75.0720  -37.55  < 2e-16 ***
-#bin5         -8.3612     0.2226 75.0720  -37.57  < 2e-16 ***
-#bin6         -8.6311     0.2226 75.0720  -38.78  < 2e-16 ***
-#bin7         -8.6313     0.2226 75.0720  -38.78  < 2e-16 ***
-#bin8         -8.4716     0.2378 75.1922  -35.62  < 2e-16 ***
-#bin9         -8.4193     0.2594 75.1881  -32.46  < 2e-16 ***
-#bin10        -8.7304     0.2378 75.1922  -36.71  < 2e-16 ***
-#bin11        -8.5984     0.2378 75.1922  -36.15  < 2e-16 ***
-#bin12        -8.6703     0.2378 75.1922  -36.46  < 2e-16 ***
-#bin13        -8.6887     0.2378 75.1922  -36.53  < 2e-16 ***
-#bin14        -8.7067     0.2378 75.1922  -36.61  < 2e-16 ***
-#bin15        -9.2354     0.2600 75.2173  -35.52  < 2e-16 ***
-#bin16        -8.6868     0.2600 75.2173  -33.41  < 2e-16 ***
-#bin17        -8.6492     0.2600 75.2173  -33.27  < 2e-16 ***
-#bin18        -8.5609     0.2600 75.2173  -32.93  < 2e-16 ***
-#bin19        -8.5011     0.2600 75.2173  -32.70  < 2e-16 ***
-#bin20        -8.7120     0.2600 75.2173  -33.51  < 2e-16 ***
-#bin21        -8.6740     0.2600 75.2173  -33.36  < 2e-16 ***
-#bin22        -8.7503     0.2600 75.2173  -33.65  < 2e-16 ***
-#bin23        -8.8807     0.2600 75.2173  -34.16  < 2e-16 ***
-#bin24        -8.9665     0.2600 75.2173  -34.49  < 2e-16 ***
-#bin25        -9.0634     0.2600 75.2173  -34.86  < 2e-16 ***
-#bin26        -9.2186     0.2600 75.2173  -35.45  < 2e-16 ***
-#bin27        -8.9932     0.2600 75.2173  -34.59  < 2e-16 ***
-#bin28        -9.1096     0.2600 75.2173  -35.04  < 2e-16 ***
-#bin29        -9.2335     0.2600 75.2173  -35.51  < 2e-16 ***
-#bin30        -8.9478     0.2983 75.1997  -30.00  < 2e-16 ***
-
-
-
+#write.csv(results_tbl_minus2.5_log, "results_new_minus2.5.csv")
 
 zero<-temp0 %>% 
   filter(!bin %in% c(0,1)) %>%
@@ -435,10 +413,15 @@ zero<-temp0 %>%
   theme(text = element_text(size = 15),
         axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0.5))+scale_x_discrete(labels = c(
           "-1" = "<0"))+
-  geom_point(aes(x = 9, y =0.3), 
+  geom_point(aes(x = 9, y =0.7), 
                shape = 8, 
-               size = 1, 
-               color = "black")
+               size = 4, 
+               color = "black")+
+  theme(
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background  = element_rect(fill = "white", colour = NA)
+  )
+
 zero
 
 
@@ -449,6 +432,7 @@ temp0<-temp0%>%
 
 temp0$bin<-as.factor(temp0$bin)
 temp0$Source_File<-as.factor(temp0$Source_File)
+hist(temp0$sqrt_pct)
 
 library(lmerTest)
 
@@ -456,137 +440,30 @@ m <- lmer(sqrt_pct ~ bin + (1|Source_File), data = temp0)
 summary(m)
 
 
-results_tbl_zero <- broom.mixed::tidy(m)
-
-#write.csv
-
-#Linear mixed model fit by REML. t-tests use Satterthwaite's method [
-#lmerModLmerTest]
-#Formula: sqrt_pct ~ bin + (1 | Source_File)
-#Data: temp0
-
-#REML criterion at convergence: 173
-
-#Scaled residuals: 
-#  Min       1Q   Median       3Q      Max 
-#-2.30646 -0.43632  0.01345  0.49482  2.54570 
-
-#Random effects:
-#  Groups      Name        Variance Std.Dev.
-#Source_File (Intercept) 0.4110   0.6411  
-#Residual                0.1496   0.3867  
-#Number of obs: 146, groups:  Source_File, 5
-
-#Fixed effects:
-#  Estimate Std. Error       df t value Pr(>|t|)    
-#(Intercept)  10.2712     0.3348   7.2263   30.67  6.4e-09 ***
-#  bin2         -7.3685     0.4284 112.0622  -17.20  < 2e-16 ***
-#  bin3         -7.9227     0.2446 112.0000  -32.39  < 2e-16 ***
-#  bin4         -7.8107     0.2446 112.0000  -31.93  < 2e-16 ***
-#  bin5         -7.9705     0.2446 112.0000  -32.59  < 2e-16 ***
-#  bin6         -7.8717     0.2446 112.0000  -32.18  < 2e-16 ***
-#  bin7         -8.0121     0.2446 112.0000  -32.76  < 2e-16 ***
-#  bin8         -8.0757     0.2446 112.0000  -33.02  < 2e-16 ***
-#  bin9         -8.1222     0.2446 112.0000  -33.21  < 2e-16 ***
-#  bin10        -7.9707     0.2446 112.0000  -32.59  < 2e-16 ***
-#  bin11        -8.4480     0.2446 112.0000  -34.54  < 2e-16 ***
-#  bin12        -8.3173     0.2446 112.0000  -34.00  < 2e-16 ***
-#  bin13        -8.5887     0.2446 112.0000  -35.11  < 2e-16 ***
- # bin14        -8.6803     0.2446 112.0000  -35.49  < 2e-16 ***
- # bin15        -8.6035     0.2446 112.0000  -35.17  < 2e-16 ***
- # bin16        -8.4454     0.2446 112.0000  -34.53  < 2e-16 ***
- # bin17        -8.6654     0.2446 112.0000  -35.43  < 2e-16 ***
-#  bin18        -8.5281     0.2446 112.0000  -34.87  < 2e-16 ***
-#  bin19        -8.2895     0.2446 112.0000  -33.89  < 2e-16 ***
-#  bin20        -8.2484     0.2446 112.0000  -33.72  < 2e-16 ***
-#  bin21        -8.2143     0.2446 112.0000  -33.58  < 2e-16 ***
-#  bin22        -8.2827     0.2446 112.0000  -33.86  < 2e-16 ***
-#  bin23        -8.1995     0.2446 112.0000  -33.52  < 2e-16 ***
-#  bin24        -8.3905     0.2446 112.0000  -34.30  < 2e-16 ***
-#  bin25        -8.2650     0.2446 112.0000  -33.79  < 2e-16 ***
-#  bin26        -8.3469     0.2446 112.0000  -34.12  < 2e-16 ***
-#  bin27        -8.3331     0.2446 112.0000  -34.07  < 2e-16 ***
-#  bin28        -8.3180     0.2446 112.0000  -34.01  < 2e-16 ***
-#  bin29        -8.3314     0.2446 112.0000  -34.06  < 2e-16 ***
-#  bin30        -8.2803     0.2446 112.0000  -33.85  < 2e-16 ***
-#  Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+results_tbl_zero_log <- broom.mixed::tidy(m)
+#write.csv(results_tbl_zero_log, "results_new_0.csv")
 
 
-
-
+###both 2.5-5####
 both<-rbind(temp2.5,temp5)
 
-both2$sqrt_pct <- sqrt(both2$pct_value)
+both$sqrt_pct <- sqrt(both$pct_value)
 
-both2<-both2%>%
+both<-both%>%
   filter(!bin %in% c(0,1))
 
-both2$bin<-as.factor(both2$bin)
-both2$Source_File<-as.factor(both2$Source_File)
+both$bin<-as.factor(both$bin)
+both$Source_File<-as.factor(both$Source_File)
 
-m3 <- lmer(sqrt_pct ~ bin + (1|Source_File), data = both2)
+m3 <- lmer(sqrt_pct~ bin + (1|Source_File), data = both)
 summary(m3)
 
-results_tbl_both <- broom.mixed::tidy(m3)
+#results_tbl_both <- broom.mixed::tidy(m3)
 
-#write.csv
-
-
-
-#Linear mixed model fit by REML. t-tests use Satterthwaite's method [
-#lmerModLmerTest]
-#Formula: sqrt_pct ~ bin + (1 | Source_File)
-#   Data: both2
-
-#REML criterion at convergence: 588.8
-
-#Scaled residuals: 
-#    Min      1Q  Median      3Q     Max 
-#-7.0237 -0.2528 -0.0460  0.2001  2.3177 
-
-#Random effects:
-# Groups      Name        Variance Std.Dev.
-# Source_File (Intercept) 111.018  10.536  
-# Residual                  6.856   2.618  
-#Number of obs: 139, groups:  Source_File, 5
-
-#Fixed effects:
-#            Estimate Std. Error       df t value Pr(>|t|)   
-#(Intercept)  10.2194     4.8554   4.4872   2.105   0.0956 . 
-#bin2          1.3016     2.2083 105.0069   0.589   0.5568   
-#bin3         -1.7154     2.2083 105.0069  -0.777   0.4390   
-#bin4         -0.6776     1.9211 105.0036  -0.353   0.7250   
-#bin5         -1.9221     1.6560 104.9990  -1.161   0.2484   
-#bin6         -3.6292     1.6560 104.9990  -2.192   0.0306 * 
-#bin7         -2.0336     1.6560 104.9990  -1.228   0.2222   
-#bin8         -2.4622     1.6560 104.9990  -1.487   0.1400   
-#bin9         -1.9946     1.6560 104.9990  -1.205   0.2311   
-#bin10        -2.0000     1.6560 104.9990  -1.208   0.2299   
-#bin11        -2.5310     1.6560 104.9990  -1.528   0.1294   
-#bin12        -2.9320     1.6560 104.9990  -1.771   0.0795 . 
-#bin13        -2.1343     1.6560 104.9990  -1.289   0.2003   
-#bin14        -3.2132     1.6560 104.9990  -1.940   0.0550 . 
-#bin15        -3.3054     1.6560 104.9990  -1.996   0.0485 * 
-#bin16        -2.9922     1.6560 104.9990  -1.807   0.0736 . 
-#bin17        -3.4518     1.6560 104.9990  -2.084   0.0395 * 
-#bin18        -2.8873     1.6560 104.9990  -1.744   0.0842 . 
-#bin19        -3.7054     1.6560 104.9990  -2.238   0.0274 * 
-#bin20        -1.7872     1.6560 104.9990  -1.079   0.2829   
-#bin21        -3.3235     1.6560 104.9990  -2.007   0.0473 * 
-#bin22        -3.7839     1.6560 104.9990  -2.285   0.0243 * 
-#bin23        -3.1160     1.6560 104.9990  -1.882   0.0626 . 
-#bin24        -3.0421     1.6560 104.9990  -1.837   0.0690 . 
-#bin25        -2.5168     1.6560 104.9990  -1.520   0.1316   
-#bin26        -2.8503     1.6560 104.9990  -1.721   0.0882 . 
-#bin27        -5.3033     1.6560 104.9990  -3.203   0.0018 **
-#bin28        -3.5387     1.7601 105.0011  -2.010   0.0469 * 
-#bin29        -3.2166     1.7601 105.0011  -1.827   0.0705 . 
-#bin30        -3.3997     1.7601 105.0011  -1.931   0.0561 . 
-#---
-#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+#write.csv(results_tbl_both, "results_both_cs_new.csv")
 
 
-both_temp<-both2%>%filter(!bin %in% c(0,1)) %>%
+both_temp<-both%>%filter(!bin %in% c(0,1)) %>%
   ggplot(aes(x = factor(bin), y = pct_value)) +
   geom_boxplot(outlier.shape = NA, fill="orange",alpha=0.2) +
   geom_jitter(width = 0.1, size = 1, alpha = 1, aes(colour = Source_File), show.legend = FALSE) +
@@ -595,12 +472,17 @@ both_temp<-both2%>%filter(!bin %in% c(0,1)) %>%
    scale_y_log10()+
   labs(title = "2.5-5°C",
        x = "Time relative to slurry immersion (minutes)",
-       y = "Percentage of baseline") +
+       y = "Ptot (%)") +
   theme_minimal()+
   theme(text = element_text(size = 15),
         axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0.5))+
   scale_x_discrete(labels = c(
-    "-1" = "<0"))
+    "-1" = "<0"))+
+  theme(
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background  = element_rect(fill = "white", colour = NA)
+  )
+
 
 
 both_temp
@@ -608,7 +490,7 @@ both_temp
 all<-ggarrange(both_temp,zero,minus, ncol=1, nrow=3, common.legend = TRUE)
 all
 
-ggsave(filename = "alltemp_all_freq3_0.5.png", plot = all, width = 14, height = 10, dpi = 300)
+#ggsave(filename = "alltemp_all_freq4_0.5.png", plot = all, width = 14, height = 10, dpi = 300)
 
 
 ############NOISE POST STUN############
@@ -752,7 +634,7 @@ min_row_30 <- shrimp30 %>%
   slice_min(order_by = Raw.EEG, n = 1, with_ties = FALSE)
 
 shrimp_duration<-rbind(min_row_17,min_row_19,min_row_23,min_row_28,min_row_30,
-                    min_row_32,min_row_33,min_row_35,min_row_46,min_row_31,
+                       min_row_32,min_row_33,min_row_35,min_row_46,min_row_31,
                        min_row_47,min_row_50,min_row_51,min_row_61, min_row_49)
 
 
@@ -790,7 +672,9 @@ shrimp_duration <- shrimp_duration %>%
   mutate(Temp = if_else(Temp == "5", "2.5_5", Temp))
 
 #write.csv
-  geom_boxplot(outlier.shape = NA)+
+shrimp_duration$Temp<-as.factor(shrimp_duration$Temp)
+shrimp_duration_plot<-ggplot(shrimp_duration, aes(x=Temp, y=Total, fill=Temp)) + 
+  geom_boxplot(outlier.shape = NA)+geom_boxplot(outlier.shape = NA)+
   geom_point(position=position_jitter(width=0.1, height=.1), size=3)+
   labs(x = "Slurry ice temperature (°C)", 
        y = "Tail flip duration (s)",
