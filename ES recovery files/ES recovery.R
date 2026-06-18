@@ -20,7 +20,8 @@ library(tidyr)
 ###All csv files are in power apart from SEF
 
 # Define the folder path
-folder_path <- "C:..."
+
+folder_path <- ""
 
 # Get all CSVs except those with 'double' in their filename
 csv_files <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
@@ -121,9 +122,9 @@ clean_combined_data2 <- clean_combined_data2 %>%
   ) %>%
   group_by(Source_File) %>%
   mutate(
-    Med = median(All.0.5.32.Hz[relative_time >= (stun_time + 60)], na.rm = TRUE),
-    MAD = mad(All.0.5.32.Hz[relative_time >= (stun_time + 60)], na.rm = TRUE),
-    Keep = if_else(relative_time >= (stun_time + 60),
+    Med = median(All.0.5.32.Hz[relative_time >= (stun_time + 8)], na.rm = TRUE),
+    MAD = mad(All.0.5.32.Hz[relative_time >= (stun_time + 8)], na.rm = TRUE),
+    Keep = if_else(relative_time >= (stun_time + 8),
                    abs(All.0.5.32.Hz - Med) <= 1 * MAD,
                    TRUE)
   ) %>%
@@ -247,7 +248,11 @@ baseline_df3 <- eeg_annotated %>%
   mutate(stun_time = first(relative_time[Comments == "Stun"])) %>%
   filter(relative_time >= 0 & relative_time < (stun_time - 100)) %>%
   arrange(Source_File, relative_time) %>%
+  mutate(n = n()) %>%      # count per group
   ungroup()
+
+baseline_df3_unique_n <- baseline_df3 %>%
+  distinct(Source_File, n) 
 
 baseline_medians <- baseline_df3 %>%
   group_by(Source_File) %>%
@@ -303,10 +308,11 @@ baseline_summary <- baseline_window %>%
 #write.csv
 
 # 1. Compute bins and anchor times
+###change here for smaller bins
 eeg_binned <- eeg_percent %>%
   filter(relative_time2 >= 0 & relative_time2 <= 3600) %>%
-  mutate(bin = floor(relative_time2 / 60),
-         anchor_time = bin * 60)
+  mutate(bin = floor(relative_time2 / 20),
+         anchor_time = bin * 20)
 
 # 2. For each Source_File + bin, pick the datapoint closest to the anchor
 start_times <- eeg_binned %>%
@@ -319,7 +325,7 @@ start_times <- eeg_binned %>%
 # 3. Join start_time back to full data and extract the 20-second window
 data_used_for_avg <- start_times %>%
   left_join(eeg_binned, by = c("Source_File", "bin")) %>%
-  filter(relative_time2 >= start_time & relative_time2 < start_time + 20)
+  filter(relative_time2 >= start_time & relative_time2 < start_time + 10)
 
 # 4. Summarise the averages
 subsampled_summary <- data_used_for_avg %>%
@@ -335,7 +341,7 @@ subsampled_summary <- data_used_for_avg %>%
 
 
 
-#write.csv
+#write.csv(subsampled_summary, "subsampled_n_es_recovery.csv")
 subsampled<-subset(subsampled_summary, select = -c(n_points) )
 
 
@@ -343,20 +349,33 @@ subsampled<-subset(subsampled_summary, select = -c(n_points) )
 new_subsample<-rbind(subsampled,baseline_summary)
 
 
-boxplot_data <- new_subsample %>%
-  select(Source_File, bin, ten_percent, hundred_percent, starts_with("pct_")) %>%
+# 1. Extract baseline percent values per animal
+baseline_ref <- baseline_summary %>%
+  select(Source_File, starts_with("pct_")) %>%
+  rename_with(~ paste0("ref_", .x), starts_with("pct_"))
+
+# 2. Join baseline reference to subsampled data
+subsampled_renorm <- new_subsample %>%
+  left_join(baseline_ref, by = "Source_File") %>%
+  mutate(
+    across(
+      starts_with("pct_"),
+      ~ (.x / get(paste0("ref_", cur_column()))) * 100,
+      .names = "new_{.col}"
+    )
+  )
+
+#write.csv(subsampled_renorm, "subsampled_es_recovery_new.csv")
+
+###rerun with 5s
+boxplot_data_5 <- subsampled_renorm  %>%
+  select(Source_File, bin, ten_percent, hundred_percent, starts_with("new_")) %>%
   pivot_longer(
-    cols = starts_with("pct_"),
+    cols = starts_with("new_"),
     names_to = "band",
     values_to = "pct_value"
   )
 
-
-
-
-boxplot_data<- boxplot_data %>%
-  mutate(band = recode(band,
-                       "pct_All.0.5.32.Hz" = "0.5-32Hz"))
 
 #####find when animals reach stun stage 2 
 
@@ -376,20 +395,20 @@ stage2_diff <- comment_times_stun %>%
   mutate(time_to_stage2 = stage2_time - stun_time)
 
 ####221s is the first time an animal is stage2 (coordinated)
-
-recover<-ggplot(boxplot_data %>% 
-                  filter(!bin %in% c(0,4,5,6,7,8,9,10)),
-                aes(x = factor(bin), y = pct_value, fill = band)) +
+recover_5<-ggplot(boxplot_data_5 %>% 
+                    filter(!bin >= 12 & bin <= 40),
+                   aes(x = factor(bin), y = pct_value, fill = band)) +
   geom_boxplot(outlier.shape = NA, fill = "firebrick4",alpha=0.2)+
-  scale_x_discrete(labels = c(
-    "-1" = "<0"))+
   geom_jitter(width = 0.2, size = 3, alpha = 0.7, aes(colour = Source_File),show.legend = FALSE) +
   geom_hline(aes(yintercept = ten_percent), color = "red", linetype = "dashed") +
   geom_hline(aes(yintercept = hundred_percent), color = "black", linetype = "dotted") +
   facet_wrap(~ band, scales = "free_y") +
-  scale_y_log10(limits = c(0.1, NA))+labs(
+  scale_y_log10(limits = c(0.1, NA),
+    labels = scales::trans_format("log10", function(x) 10^x)
+  )+
+labs(
     title = "ES recovery",
-    x = "Time relative to ES (minutes)",
+    x = "Time relative to ES (seconds)",
     y = "Ptot (%)"
   ) +
   guides(fill = "none") +
@@ -397,25 +416,47 @@ recover<-ggplot(boxplot_data %>%
   theme(
     strip.text = element_blank(),
     strip.background = element_blank()
-  )+  theme(text = element_text(size = 20))
-recover
+  )+  theme(text = element_text(size = 20))+
+  scale_x_discrete(labels = c("-1" = "<0",
+                              "0"="8",
+                              "1" = "20",
+                              "2"="40",
+                              "3"="60",
+                              "4"="80",
+                              "5"="100",
+                              "6"="120",
+                              "7"="140",
+                              "8"="160",
+                              "9"="180",
+                              "10"="200",
+                              "11"="220"
+                            ))+
+  theme(
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background  = element_rect(fill = "white", colour = NA)
+  )
 
-boxplot_data$sqrt_pct <- sqrt(boxplot_data$pct_value)
-
-boxplot_data<-boxplot_data%>%
-  filter(!bin %in% c(0,4,5,6,7,8,9,10))
+recover_5
 
 
-boxplot_data$bin<-as.factor(boxplot_data$bin)
-boxplot_data$Source_File<-as.factor(boxplot_data$Source_File)
 
-m3 <- lmer(sqrt_pct ~ bin + (1|Source_File), data = boxplot_data)
+boxplot_data_5$sqrt_pct <- sqrt(boxplot_data_5$pct_value)
+hist(boxplot_data_5$sqrt_pct)
+
+boxplot_data_5<-boxplot_data_5%>%
+  filter(!bin >= 12 & bin <= 40)
+
+
+boxplot_data_5$bin<-as.factor(boxplot_data_5$bin)
+boxplot_data_5$Source_File<-as.factor(boxplot_data_5$Source_File)
+
+library(lmerTest)
+m3 <- lmer(sqrt_pct ~ bin + (1|Source_File), data = boxplot_data_5)
 summary(m3)
 
 results_tbl<- broom.mixed::tidy(m3)
+#write.csv(results_tbl, "es_recovery_new_results2.csv")
 
-#write.csv
-#ggsave(filename = "recovery_es.png", plot = recover, width = 14, height = 10, dpi = 300)
-
+#ggsave(filename = "recovery_es_new4.png", plot = recover_5, width = 14, height = 10, dpi = 300)
 
 
