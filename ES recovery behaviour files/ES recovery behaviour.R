@@ -102,12 +102,26 @@ plot_data <- plot_data %>%
     proportion = ifelse(!is.infinite(cutoff) & time_mid >= cutoff, 100, proportion)
   ) %>%
   ungroup()
+library(dplyr)
+
+plot_data2 <- plot_data %>%
+  group_by(recovery_stage, stun_parameter) %>%
+  arrange(time_mid) %>%
+  ungroup()
+
+zeros <- plot_data2 %>%
+  distinct(recovery_stage, stun_parameter) %>%
+  mutate(time_mid = 0, proportion = 0)
+
+plot_data_plot <- bind_rows(plot_data2, zeros)
+
+
 
 # Step 7: Plot
-both<-ggplot(plot_data, aes(x = time_mid, y = proportion,
+both<-ggplot(plot_data_plot, aes(x = time_mid, y = proportion,
                       group = interaction(recovery_stage, stun_parameter))) +
   geom_line(aes(color = recovery_stage, linetype = stun_parameter), size = 1.2) +
-  labs(x = "Time (s)", y = "Proportion of animals (%)",
+  labs(x = "Time (mins)", y = "Proportion of animals reaching stage 2 and 3 (%)",
        color = "Recovery stage", linetype = "Stun parameter")+
   theme_minimal() +
   guides(
@@ -117,10 +131,21 @@ both<-ggplot(plot_data, aes(x = time_mid, y = proportion,
                      labels = c("stage_3"="Stage 2: Coordinated","stage_4"="Stage 3: Fully righted")) +
   scale_linetype_manual(values  = c("2.5_5"="solid","3_20"="21"), labels=c("2.5_5"="2.5 V cm⁻¹ 5s", "3_20"="3 V cm⁻¹ 20s")) +
   ylim(0,100) + xlim(0,2000)+
-  theme(text = element_text(size = 30),
-        axis.text.x = element_text(angle = 0, hjust = 0.5))
+  theme(text = element_text(size = 20))+
+  scale_x_continuous(
+    breaks = seq(0, 2000, by = 60),
+    labels = function(x) x / 60,
+    expand = c(0, 0)
+  )+
+  theme(
+    axis.text.x = element_text(size=20,angle = 90, vjust = 0.5, hjust = 0.5))+
+  theme(
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background  = element_rect(fill = "white", colour = NA)
+  )
+
 both
-#ggsave(filename = "recovery_behaviour3.png", plot = both, width = 14, height = 10, dpi = 300)
+#ggsave(filename = "recovery_behaviour4.png", plot = both, width = 14, height = 10, dpi = 300)
 
 
 ###analysis####
