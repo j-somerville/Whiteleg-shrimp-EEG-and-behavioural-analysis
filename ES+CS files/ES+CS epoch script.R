@@ -1,5 +1,6 @@
 ####EEG script from Jasmine csv files from labchart#####
-###Jan and Feb ES+CS data 2024-2025 - 2-2.5V 5s and 2.5-3V 20s
+###Jan and Feb ES+CS data 2024-2025 - 2-2.5V 5s and 2.5-3V 
+###Also includes pre-ES post-CS data analysis and high amplitude period analysis (post-CS)
 ####Cleaning csv files that have been extracted from Labchart using a power template
 ##One function for single files and another for double
 ##ensure time csv files are in the format hh:mm:ss before reading in R
@@ -19,9 +20,8 @@ library(tidyr)
 
 
 
-
 #Define the folder path
-folder_path <- "C:.."
+folder_path <- ""
 
 # Get all CSVs except those with 'double' in their filename
 csv_files <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
@@ -170,9 +170,22 @@ comment_times <- clean_combined_data2 %>%
   group_by(Source_File) %>%
   slice_min(relative_time, n = 1) %>%
   ungroup() %>%
-  select(Source_File, relative_time)
+  select(Source_File, relative_time)%>%
+rename(in_slurry = relative_time)
 
+comment_times2 <- clean_combined_data2 %>%
+  filter(str_detect(Comments, regex("stun off", ignore_case = TRUE))) %>%
+  group_by(Source_File) %>%
+  slice_min(relative_time, n = 1) %>%
+  ungroup() %>%
+  select(Source_File, relative_time)%>%
+  rename(stun_off_time = relative_time)
 
+combined <- comment_times %>%
+  full_join(comment_times2, by = "Source_File") %>%
+  mutate(time_diff = in_slurry - stun_off_time)
+mean(combined$time_diff)
+#write.csv(combined, "latency_duration.csv")
 plots <- df_long_filtered %>%
   group_split(Source_File) %>%
   map(function(file_df) {
@@ -215,13 +228,21 @@ baseline_df3 <- eeg_annotated %>%
   mutate(stun_time = first(relative_time[Comments == "in slurry"])) %>%
   filter(relative_time >= 0 & relative_time < (stun_time - 100)) %>%
   arrange(Source_File, relative_time) %>%
+  mutate(n = n()) %>%      # count per group
   ungroup()
+
+###find unique n number per group
+
+baseline_df3_unique_n <- baseline_df3 %>%
+  distinct(Source_File, n)
 
 baseline_medians <- baseline_df3 %>%
   group_by(Source_File) %>%
   summarise(across(c(All.0.5.32.Hz),
                    ~median(.x, na.rm = TRUE),
                    .names = "baseline_{.col}"))
+###add to supp table
+#write.csv(baseline_medians, "baseline_medians_ES.csv")
 
 eeg_percent <- eeg_annotated %>%
   left_join(baseline_medians, by = "Source_File") %>%
@@ -319,6 +340,29 @@ subsampled<-subset(subsampled_summary, select = -c(n_points) )
 #combine with baseline
 new_subsample<-rbind(subsampled,baseline_summary)
 
+
+####new baseline step.
+
+# 1. Extract baseline percent values per animal
+baseline_ref <- baseline_summary %>%
+  select(Source_File, starts_with("pct_")) %>%
+  rename_with(~ paste0("ref_", .x), starts_with("pct_"))
+
+# 2. Join baseline reference to subsampled data
+subsampled_renorm <- new_subsample %>%
+  left_join(baseline_ref, by = "Source_File") %>%
+  mutate(
+    across(
+      starts_with("pct_"),
+      ~ (.x / get(paste0("ref_", cur_column()))) * 100,
+      .names = "new_{.col}"
+    )
+  )
+
+#write.csv(subsampled_renorm, "subsampled_renorm_es_all_epochs.csv")
+
+
+
 #####remove these files as noisy artefacts or too short####
 
 new_subsample<-new_subsample %>%
@@ -326,27 +370,34 @@ new_subsample<-new_subsample %>%
            !str_detect(Source_File, "120624_609.csv")&
            !str_detect(Source_File, "140124_07.csv")&
            !str_detect(Source_File, "120624_611_v3.csv"))
+subsampled_renorm <-subsampled_renorm %>%
+  filter(!str_detect(Source_File, "120624_610_v3.csv")&
+           !str_detect(Source_File, "120624_609.csv")&
+           !str_detect(Source_File, "140124_07.csv")&
+           !str_detect(Source_File, "120624_611_v3.csv"))
 
 
-boxplot_data <- new_subsample %>%
-  select(Source_File, bin, ten_percent, hundred_percent, starts_with("pct_")) %>%
+
+
+boxplot_data2 <- subsampled_renorm  %>%
+  select(Source_File, bin, ten_percent, hundred_percent, starts_with("new_")) %>%
   pivot_longer(
-    cols = starts_with("pct_"),
+    cols = starts_with("new_"),
     names_to = "band",
     values_to = "pct_value"
   )
 
 
-boxplot_data<- boxplot_data %>%
+boxplot_data2<- boxplot_data2 %>%
   mutate(band = recode(band,
-                       "pct_All.0.5.32.Hz" = "0.5-32Hz"))
+                       "new_pct_All.0.5.32.Hz" = "0.5-32Hz"))
 
 ###cut boxplot data at bin 30
 
-boxplot_data<- boxplot_data |>
+boxplot_data2<- boxplot_data2 |>
   dplyr::filter(bin <= 30)
 
-ggplot(boxplot_data, aes(x = factor(bin), y = pct_value, fill = band)) +
+ggplot(boxplot_data2, aes(x = factor(bin), y = pct_value, fill = band)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 2, alpha = 0.7, aes(colour = Source_File)) +
   geom_hline(aes(yintercept = ten_percent), color = "red", linetype = "dashed") +
@@ -360,12 +411,12 @@ ggplot(boxplot_data, aes(x = factor(bin), y = pct_value, fill = band)) +
   ) +
   theme_minimal()
 
-tail_flip_bp<- boxplot_data %>%
+tail_flip_bp<- boxplot_data2 %>%
   filter(!str_detect(Source_File, "120624"))
 
-no_tail_flip <- boxplot_data%>%
+no_tail_flip <- boxplot_data2%>%
   filter(str_detect(Source_File, "120624"))
-##plot separetly
+##plot separately
 
 ###tail flippers/ responders#####
 tail_flip_bp_4_shrimp<-tail_flip_bp %>%
@@ -389,6 +440,10 @@ tf2<-tail_flip_bp_4_shrimp%>%
        x = "Time relative to slurry immersion (minutes)",
        y = "Ptot (%)") +
   theme_minimal()+
+  theme(
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background  = element_rect(fill = "white", colour = NA)
+  )+
   theme(text = element_text(size = 15),
         axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0.5))+
   scale_x_discrete(labels = c(
@@ -411,63 +466,13 @@ tail_flip_bp_4_shrimp$Source_File<-as.factor(tail_flip_bp_4_shrimp$Source_File)
 m2 <- lmer(sqrt_pct ~ bin + (1|Source_File), data = tail_flip_bp_4_shrimp)
 summary(m2)
 
-results_tbl_2.5 <- broom.mixed::tidy(m2)
+results_tbl_2.5<- broom.mixed::tidy(m2)
 
-#write.csv
+#write.csv(results_tbl_2.5, "results_tbl_2.5.csv")
 
-#Linear mixed model fit by REML. t-tests use Satterthwaite's method [
-#lmerModLmerTest]
-#Formula: sqrt_pct ~ bin + (1 | Source_File)
-#   Data: tail_flip_bp_4_shrimp
 
-#REML criterion at convergence: 587.3
 
-#Scaled residuals: 
-#    Min      1Q  Median      3Q     Max 
-#-5.9044 -0.3425 -0.0183  0.2352  4.0156 
-
-#Random effects:
-# Groups      Name        Variance Std.Dev.
-# Source_File (Intercept) 25.702   5.07    
-# Residual                 1.715   1.31    
-#Number of obs: 179, groups:  Source_File, 6
-
-#Fixed effects:
-#            Estimate Std. Error       df t value Pr(>|t|)    
-#(Intercept)  10.2597     2.1376   5.6630   4.800  0.00351 ** 
-#bin2         -3.4938     0.7561 143.9997  -4.621 8.41e-06 ***
-#bin3         -3.5711     0.7561 143.9997  -4.723 5.46e-06 ***
-#bin4         -3.8680     0.7561 143.9997  -5.116 9.80e-07 ***
-#bin5         -3.6970     0.7561 143.9997  -4.890 2.66e-06 ***
-#bin6         -4.0158     0.7561 143.9997  -5.311 4.04e-07 ***
-#bin7         -4.1627     0.7561 143.9997  -5.506 1.64e-07 ***
-#bin8         -4.1373     0.7561 143.9997  -5.472 1.92e-07 ***
-#bin9         -4.3378     0.7561 143.9997  -5.737 5.47e-08 ***
-#bin10        -4.1378     0.7561 143.9997  -5.473 1.91e-07 ***
-#bin11        -4.2638     0.7561 143.9997  -5.639 8.73e-08 ***
-#bin12        -4.4466     0.7561 143.9997  -5.881 2.73e-08 ***
-#bin13        -4.6422     0.7561 143.9997  -6.140 7.62e-09 ***
-#bin14        -4.1992     0.7561 143.9997  -5.554 1.31e-07 ***
-#bin15        -4.2560     0.7561 143.9997  -5.629 9.17e-08 ***
-#bin16        -4.4191     0.7561 143.9997  -5.845 3.25e-08 ***
-#bin17        -4.0770     0.7561 143.9997  -5.392 2.78e-07 ***
-#bin18        -3.7435     0.7561 143.9997  -4.951 2.04e-06 ***
-#bin19        -3.7841     0.7561 143.9997  -5.005 1.61e-06 ***
-#bin20        -3.9990     0.7561 143.9997  -5.289 4.47e-07 ***
-#bin21        -4.5235     0.7561 143.9997  -5.983 1.66e-08 ***
-#bin22        -4.1491     0.7561 143.9997  -5.488 1.79e-07 ***
-#bin23        -3.7079     0.7561 143.9997  -4.904 2.50e-06 ***
-#bin24        -4.4416     0.7561 143.9997  -5.875 2.81e-08 ***
-#bin25        -4.0373     0.7561 143.9997  -5.340 3.55e-07 ***
-#bin26        -3.7688     0.7561 143.9997  -4.985 1.76e-06 ***
-#bin27        -4.3595     0.7561 143.9997  -5.766 4.76e-08 ***
-#bin28        -3.9894     0.7561 143.9997  -5.276 4.74e-07 ***
-#bin29        -4.0989     0.7561 143.9997  -5.421 2.43e-07 ***
-#bin30        -4.1904     0.7942 144.0018  -5.276 4.75e-07 ***
-#---
-#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-####non responders/tail flippers#####
+####non responders/non-tail flippers#####
 shimp92<-subset(tail_flip_bp, tail_flip_bp$Source_File=="180925_92.csv")
 shrimp616<-subset(tail_flip_bp,tail_flip_bp$Source_File=="190624_616.csv")
 shrimp15<-subset(tail_flip_bp,tail_flip_bp$Source_File=="150125_15.csv")
@@ -490,8 +495,12 @@ scale_y_log10()+
 
   theme_minimal()+ geom_point(aes(x = 3, y =0.4), 
                               shape = 8, 
-                              size = 1, 
+                              size = 4, 
                               color = "black")+
+  theme(
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background  = element_rect(fill = "white", colour = NA)
+  )+
   theme(text = element_text(size = 15),
         axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0.5))+
   scale_x_discrete(labels = c(
@@ -511,57 +520,13 @@ m2 <- lmer(sqrt_pct ~ bin + (1|Source_File), data = Ntail_fliptwo)
 summary(m2)
 results_tbl_3 <- broom.mixed::tidy(m2)
 
-#write.csv
+#write.csv(results_tbl_3, "results_tbl_3.csv")
 
-#Scaled residuals: 
-#  Min      1Q  Median      3Q     Max 
-#-5.0393 -0.4297 -0.0496  0.4197  3.0910 
-
-#Random effects:
-#  Groups      Name        Variance Std.Dev.
-#Source_File (Intercept) 0.10103  0.3178  
-#Residual                0.06462  0.2542  
-#Number of obs: 112, groups:  Source_File, 4
-
-#Fixed effects:
-#  Estimate Std. Error      df t value Pr(>|t|)    
-#(Intercept)  10.3890     0.2035  7.6043   51.05 6.38e-11 ***
-#  bin2         -9.1687     0.2215 79.0512  -41.40  < 2e-16 ***
-#  bin3         -9.1250     0.1798 79.0053  -50.76  < 2e-16 ***
-#  bin4         -9.1791     0.1798 79.0053  -51.06  < 2e-16 ***
-#  bin5         -9.2882     0.1798 79.0053  -51.67  < 2e-16 ***
-#  bin6         -9.2668     0.1798 79.0053  -51.55  < 2e-16 ***
-#  bin7         -9.2285     0.1798 79.0053  -51.34  < 2e-16 ***
-#  bin8         -9.2598     0.1798 79.0053  -51.51  < 2e-16 ***
-#  bin9         -9.3098     0.1798 79.0053  -51.79  < 2e-16 ***
-#  bin10        -9.4102     0.1798 79.0053  -52.35  < 2e-16 ***
-#  bin11        -9.5128     0.1798 79.0053  -52.92  < 2e-16 ***
-#  bin12        -9.3721     0.1798 79.0053  -52.14  < 2e-16 ***
-#  bin13        -9.5329     0.1798 79.0053  -53.03  < 2e-16 ***
-#  bin14        -9.4393     0.1798 79.0053  -52.51  < 2e-16 ***
-#  bin15        -9.4351     0.1798 79.0053  -52.49  < 2e-16 ***
-#  bin16        -9.4369     0.1798 79.0053  -52.50  < 2e-16 ***
-#  bin17        -9.3938     0.1798 79.0053  -52.26  < 2e-16 ***
-#  bin18        -9.3317     0.1798 79.0053  -51.91  < 2e-16 ***
-#  bin19        -9.3809     0.1798 79.0053  -52.19  < 2e-16 ***
-#  bin20        -9.3028     0.1798 79.0053  -51.75  < 2e-16 ***
-#  bin21        -9.3464     0.1798 79.0053  -51.99  < 2e-16 ***
-#  bin22        -9.5204     0.1798 79.0053  -52.96  < 2e-16 ***
-#  bin23        -9.3294     0.1798 79.0053  -51.90  < 2e-16 ***
-#  bin24        -9.3183     0.1798 79.0053  -51.84  < 2e-16 ***
-#  bin25        -9.4122     0.1947 79.0315  -48.33  < 2e-16 ***
-#  bin26        -9.5074     0.1947 79.0315  -48.82  < 2e-16 ***
-#  bin27        -9.4119     0.1947 79.0315  -48.33  < 2e-16 ***
-#  bin28        -9.2869     0.1947 79.0315  -47.69  < 2e-16 ***
-#  bin29        -9.2626     0.1947 79.0315  -47.56  < 2e-16 ***
-#  bin30        -9.3359     0.1947 79.0315  -47.94  < 2e-16 ***
-#  ---
-#  Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 both<-ggarrange(tf2, ntf3, ncol=1, nrow=2, common.legend = TRUE)
 both
 
-#ggsave(filename = "bothstun_all_freq3_0.5baseline.png", plot = both, width = 14, height = 10, dpi = 300)
+#ggsave(filename = "new4_bothstun_all_freq3_0.5baseline.png", plot = both, width = 14, height = 10, dpi = 300)
 
 
 
@@ -576,6 +541,7 @@ slurry_times <- clean_combined_data %>%
   filter(grepl("in slurry", Comments, ignore.case = TRUE)) %>%
   group_by(Source_File) %>%
   summarise(slurry_time = first(relative_time), .groups = "drop")
+
 plot_data <- clean_combined_data %>%
   left_join(slurry_times, by = "Source_File")
 
@@ -774,7 +740,7 @@ shrimp_duration_plot
 
 ###read in temp duration plot. rbind change name of temp column to stun_parametr
 
-shrimp_both<-read.csv("C:/....shrimp_eeg_noise_duration_all.csv")
+shrimp_both<-read.csv("shrimp_eeg_noise_duration_all.csv")
 
 shrimp_duration_plot <- ggplot(shrimp_both,
   aes(x = stun_parameter, y = Total, fill = stun_parameter)) +
@@ -884,7 +850,7 @@ summary(temp_noise)
 
 #######0.5 sampling post stun- slurry subsection####
 #Define the folder path
-folder_path <- "C:/...."
+folder_path <- ""
 
 # Get all CSVs except those with 'double' in their filename
 csv_files <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
@@ -1036,6 +1002,23 @@ comment_times <- clean_combined_data2 %>%
   select(Source_File, relative_time)
 
 
+comment_times_stun <- clean_combined_data2 %>%
+  filter(str_detect(Comments, regex("stun off", ignore_case = TRUE))) %>%
+  group_by(Source_File) %>%
+  slice_min(relative_time, n = 1) %>%
+  ungroup() %>%rename(stun_time = relative_time)
+
+comment_times_slurry <- clean_combined_data2 %>%
+  filter(str_detect(Comments, regex("in slurry", ignore_case = TRUE))) %>%
+  group_by(Source_File) %>%
+  slice_min(relative_time, n = 1) %>%
+  ungroup()%>%rename(slurry_time = relative_time)
+
+combined_times <- comment_times_stun %>%
+  full_join(comment_times_slurry, by = "Source_File") %>%
+  mutate(time_diff = slurry_time-stun_time)
+
+
 
 plots <- df_long_filtered %>%
   group_split(Source_File) %>%
@@ -1078,8 +1061,16 @@ baseline_df3 <- eeg_annotated %>%
   group_by(Source_File) %>%
   mutate(stun_time = first(relative_time[Comments == "in slurry"])) %>%
   filter(relative_time >= 0 & relative_time < (stun_time - 100)) %>%
-  arrange(Source_File, relative_time) %>%
+  arrange(Source_File, relative_time)   %>%
+  mutate(n = n()) %>%      # count per group
   ungroup()
+
+###find unique n number per group
+
+baseline_df3_unique_n <- baseline_df3 %>%
+  distinct(Source_File, n)
+
+#write.csv()
 
 baseline_medians <- baseline_df3 %>%
   group_by(Source_File) %>%
@@ -1135,7 +1126,7 @@ baseline_summary <- baseline_window %>%
 stun_times <- eeg_percent %>%
   group_by(Source_File) %>%
   summarise(
-    stun_off_time = first(relative_time[Comments == "stun off"]) + 5,
+    stun_off_time = first(relative_time[Comments == "stun off"]) + 8,
     in_slurry_time = first(relative_time[Comments == "in slurry"]) - 5
   )
 
@@ -1143,6 +1134,7 @@ post_stun_window <- eeg_percent %>%
   left_join(stun_times, by = "Source_File") %>%
   filter(relative_time >= stun_off_time, relative_time <= in_slurry_time)
 
+####this part is filtered...
 
 ###apply MAD+/-1 for this part
 post_stun_window2<- post_stun_window %>%
@@ -1172,9 +1164,10 @@ post_stun_window2 <- post_stun_window2 %>%
   mutate(time = row_number() - 1) %>%
   ungroup()
 
+
 ###find number of values used here.
 summary_post_stun<-post_stun_window2 %>% group_by(Source_File) %>% summarise(all_count= length(!is.na( ps_pct_All_sub)))
-#write.csv()
+#write.csv(summary_post_stun, "new_summary_post_stun.csv")
 
 ###doubles data points
 
@@ -1199,7 +1192,7 @@ ggplot(post_stun_window2_long, aes(x = time, y = percent_post_stun, color = band
        x = "Time (s)", y = "% of baseline", color = "EEG Band") +
   theme_minimal()
 
-
+number15<-subset(post_stun_window2_long,post_stun_window2_long$Source_File=="150125_15subsample.csv")
 
 ###then we got mean of each band
 post_stun_summary <- post_stun_window2 %>%
@@ -1217,21 +1210,48 @@ baseline_summary$label<-"baseline"
 new_baseline_summary<-baseline_summary[, c(1,2,3,4,7)] 
 new_ps<-rbind(post_stun_summary,new_baseline_summary)
 
+
+######new part
+# 1. Extract baseline percent values per animal
+baseline_ref <- new_baseline_summary %>%
+  select(Source_File, starts_with("pct_")) %>%
+  rename_with(~ paste0("ref_", .x), starts_with("pct_"))
+
+# 2. Join baseline reference to subsampled data
+subsampled_renorm <- new_ps %>%
+  left_join(baseline_ref, by = "Source_File") %>%
+  mutate(
+    across(
+      starts_with("pct_"),
+      ~ (.x / get(paste0("ref_", cur_column()))) * 100,
+      .names = "new_{.col}"
+    )
+  )
+
+
+
 ###get rid of files with artefacts###
 new_ps<- new_ps %>%
   filter(!str_detect(Source_File, "120624_610_v3.csv"))
 new_ps<- new_ps %>%
   filter(!str_detect(Source_File, "120624_609.csv"))
 
-new_ps_2.5v<-new_ps%>%
+subsampled_renorm<- subsampled_renorm %>%
+  filter(!str_detect(Source_File, "120624_610_v3.csv"))
+subsampled_renorm<- subsampled_renorm %>%
+  filter(!str_detect(Source_File, "120624_609.csv"))
+
+
+
+new_ps_2.5v<-subsampled_renorm%>%
   filter(!str_detect(Source_File, "150125_15subsample.csv") &
            !str_detect(Source_File, "120624_613subsample.csv")&
            !str_detect(Source_File, "190624_616subsample.csv")&
            !str_detect(Source_File, "180925_92subsample.csv"))
 new_ps_2.5v$stun_parameter<-"2.5v"
 
-new_ps_3v<-new_ps%>%
-  filter(str_detect(Source_File, "150125_15subsample.csv")|
+new_ps_3v<-subsampled_renorm%>%
+  filter(!str_detect(Source_File, "150125_15subsample.csv")&
            str_detect(Source_File, "120624_613subsample.csv")|
            str_detect(Source_File, "190624_616subsample.csv")|
            str_detect(Source_File, "180925_92subsample.csv"))
@@ -1240,15 +1260,15 @@ new_ps_3v$stun_parameter<-"3v"
 new_ps2<-rbind(new_ps_3v,new_ps_2.5v)
 
 
-ps <- ggplot(new_ps2,aes(x = label,y = pct_All.0.5.32.Hz))+
+ps <- ggplot(new_ps2,aes(x = label,y = new_pct_All.0.5.32.Hz))+
 geom_boxplot(aes(fill = stun_parameter),outlier.shape = NA, alpha = 0.3) +
 geom_jitter(colour="black",width = 0.1,size = 2,alpha = 1,show.legend = FALSE) +
   geom_line(aes(group = Source_File),alpha = 0.7,colour="grey",show.legend = FALSE) +
   geom_hline(aes(yintercept = ten_percent), color = "red",linetype = "dashed") +
   geom_hline(aes(yintercept = hundred_percent), color = "black",linetype = "dotted") +
   scale_y_log10() +
-  scale_x_discrete(labels = c("baseline" = "Baseline",
-                              "post_stun" = "Post-stun")) +
+  scale_x_discrete(labels = c("baseline" = "baseline",
+                              "post_stun" = "post-stun")) +
   labs(x = "EEG section",
     y = "Ptot (%)",
     fill = "Stun parameter"
@@ -1260,17 +1280,21 @@ geom_jitter(colour="black",width = 0.1,size = 2,alpha = 1,show.legend = FALSE) +
     axis.text.x = element_text(angle = 0, hjust = 0.5)
   )+
   scale_fill_manual(labels= c("2.5v"="ES-CS-R: 2-2.5 V cm⁻¹ 5s", 
-                              "3v"="ES-CS-NR: 2.5-3 V cm⁻¹ 20s"),
-                              values = c("2.5v" = "orange",
+                              "3v"="ES-CS-NR: 3 V cm⁻¹ 20s"),
+                              values = c("2.5v" = "lightblue",
                                "3v"   = "firebrick1"))+
   theme(strip.text = element_blank(),
         strip.background = element_blank())+
-  theme(axis.text.x = element_text(size = 20),
-        text = element_text(size = 20))
+  theme(axis.text.x = element_text(size = 15),
+        text = element_text(size = 20))+
+  theme(
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background  = element_rect(fill = "white", colour = NA)
+  )
 
 ps
-#ggsave(filename = "post_stun_slurry_0.5_subsample.png", plot = ps, width = 10, height = 6, dpi = 300)
-
+#ggsave(filename = "new3_post_stun_slurry_0.5_subsample_8.png", plot = ps, width = 10, height = 6, dpi = 300)
+###15 removed as only 4s of immobility data
 
 summary_tbl <- new_ps2%>%
   group_by(stun_parameter, label) %>%
@@ -1283,7 +1307,7 @@ summary_tbl <- new_ps2%>%
 ####stats
 ###squareroot
 
-new_ps2$sqrt_pct <- sqrt(new_ps2$pct_All.0.5.32.Hz)
+new_ps2$sqrt_pct <- sqrt(new_ps2$new_pct_All.0.5.32.Hz)
 new_ps2$stun_parameter<-as.factor(new_ps2$stun_parameter)
 new_ps2$label<-as.factor(new_ps2$label)
 
@@ -1292,22 +1316,7 @@ new_ps2$Source_File<-as.factor(new_ps2$Source_File)
 m2 <- glm(sqrt_pct ~ stun_parameter+label, data = new_ps2)
 summary(m2)
 results_tbl_3 <- broom.mixed::tidy(m2)
-###no sig diff
-#Call:
-#glm(formula = sqrt_pct ~ stun_parameter + label, data = new_ps2)
 
-#Coefficients:
-#  Estimate Std. Error t value Pr(>|t|)   
-#(Intercept)         20.81      22.71   0.917  0.37217   
-#stun_parameter3v   -26.19      28.39  -0.923  0.36901   
-#labelpost_stun      91.23      27.81   3.280  0.00442 **
-#  ---
-#  Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+#write.csv(results_tbl_3, "results_subsample_ps_epoch_8s2.csv")
 
-#(Dispersion parameter for gaussian family taken to be 3867.541)
 
-#Null deviance: 110654  on 19  degrees of freedom
-#Residual deviance:  65748  on 17  degrees of freedom
-#AIC: 226.71
-
-#Number of Fisher Scoring iterations: 2
